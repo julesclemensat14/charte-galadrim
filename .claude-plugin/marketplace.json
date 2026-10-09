@@ -1,0 +1,12 @@
+{
+	"name": "charte-galadrim",
+	"owner": { "name": "Galadrim" },
+	"description": "Documents à la charte Galadrim",
+	"plugins": [
+		{
+			"name": "charte-galadrim",
+			"source": ".",
+			"description": "Met un Word ou un PDF à la charte du mémoire technique Galadrim, contenu inchangé"
+		}
+	]
+}

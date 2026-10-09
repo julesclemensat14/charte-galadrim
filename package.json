@@ -1,0 +1,10 @@
+{
+	"name": "charte-galadrim",
+	"private": true,
+	"description": "Bibliothèques du moteur du mémoire, installées par Claude Code à l'installation de l'extension",
+	"dependencies": {
+		"adm-zip": "0.6.0",
+		"docx": "9.7.1",
+		"pdf-parse": "2.4.5"
+	}
+}

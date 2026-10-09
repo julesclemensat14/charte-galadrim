@@ -562,7 +562,7 @@ function figureXml(zip, figure, n, opts = {}) {
 
 function bodyToXml(
 	blocks,
-	{ annexes = [], figuresCorps = [], zip = null, numeroter = true, ouvreLaPage = false } = {},
+	{ annexes = [], figuresCorps = [], zip = null, numeroter = true, ouvreLaPage = false, tuiles = true } = {},
 ) {
 	const toc = [];
 	const titres = new Map();
@@ -625,7 +625,7 @@ function bodyToXml(
 					: undefined;
 			premierTitre = false;
 			out += headingXml(titre.styleId, titre.text, titre.bm, titre.name, sansSaut);
-			tuilesEnAttente = titre.styleId === STYLE.h2 && /pr[ée]sentation de galadrim/i.test(titre.text);
+			tuilesEnAttente = tuiles && titre.styleId === STYLE.h2 && /pr[ée]sentation de galadrim/i.test(titre.text);
 			if (frise && titre.styleId === STYLE.h2) {
 				jalonsEnAttente = visuels.COUP_D_OEIL.test(titre.text) ? "coup" : null;
 				if (!delaisServis && visuels.DELAIS.test(titre.text) && i !== partieDuPlanning) {
@@ -914,15 +914,25 @@ function identiteCouverture(adresseContacts) {
 	}
 }
 
-function fillCover(coverXml, { objet, dateStr, sousTraitant, titre, mention, adresse }) {
+function fillCover(coverXml, { objet, dateStr, sousTraitant, titre, mention, adresse, presentePar }) {
 	const stLines = sousTraitant ? String(sousTraitant).split("\n") : [];
-	const ident = identiteCouverture(adresse);
+	const ident = presentePar
+		? {
+				raison: presentePar.nom || "",
+				adresse: presentePar.adresse || "",
+				immat: [presentePar.siren && `SIREN ${presentePar.siren}`, presentePar.naf && `NAF ${presentePar.naf}`]
+					.filter(Boolean)
+					.join(" · "),
+			}
+		: identiteCouverture(adresse);
+	const sansBloc = presentePar && !ident.raison;
 	let n = 0;
 	return coverXml.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (p) => {
 		n++;
-		if (n === 1) return setParaText(p, `[${titre || TITRE_DEFAUT}]`);
+		if (n === 1) return setParaText(p, titre ? `[${titre}]` : "");
 		if (n === 2) return setParaText(p, objet || "");
 		if (n === 3) return mention ? setParaText(p, mention) : "";
+		if (sansBloc && n >= 4 && n <= 7) return "";
 		if (n === 5) return setParaText(p, ident.raison || "Galadrim SAS");
 		if (n === 6) return ident.adresse ? setParaText(p, ident.adresse) : "";
 		if (n === 7) return ident.immat ? setParaText(p, ident.immat) : "";
@@ -1004,14 +1014,20 @@ function plan(md) {
 async function render(md, meta = {}) {
 	const blocks = parseBlocks(stripFences(md));
 
-	const { k, titre: titreMd, objet: objetMd, metaLines } = couperCouverture(blocks);
+	const {
+		k,
+		titre: titreMd,
+		objet: objetMd,
+		metaLines,
+	} = meta.sansDefauts ? { k: 0, metaLines: [] } : couperCouverture(blocks);
 	const objet = meta.objet == null ? objetMd : meta.objet;
-	const titre = meta.titre || titreMd || TITRE_DEFAUT;
+	const titre = meta.titre || titreMd || (meta.sansDefauts ? "" : TITRE_DEFAUT);
 	const bodyBlocks = blocks.slice(k);
 
 	const dateStr = meta.date || metaLines.find((l) => /\d{4}|\d{1,2}\/\d{1,2}/.test(l)) || "";
 	const couv = meta.couverture || {};
-	const lignes = Array.isArray(couv.lignes) && couv.lignes.length ? couv.lignes : couverture.LIGNES_DEFAUT;
+	const lignes =
+		Array.isArray(couv.lignes) && couv.lignes.length ? couv.lignes : meta.sansDefauts ? [] : couverture.LIGNES_DEFAUT;
 	const tableHeader = couv.titre || meta.acheteur || objet || titre;
 
 	const zip = new AdmZip(fs.readFileSync(GABARIT));
@@ -1032,8 +1048,10 @@ async function render(md, meta = {}) {
 				titre,
 				mention: meta.mention,
 				adresse: (lignes.find((l) => /^adresse$/i.test(l.label)) || {}).value,
+				presentePar: meta.sansDefauts ? meta.presentePar || {} : undefined,
 			});
-	const infoTable = meta.sansCouverture ? "" : tableauContacts(body.slice(tblStart, tblEnd), tableHeader, lignes);
+	const infoTable =
+		meta.sansCouverture || !lignes.length ? "" : tableauContacts(body.slice(tblStart, tblEnd), tableHeader, lignes);
 	const sectPr = meta.sansCouverture ? body.slice(sectStart).replace(/<w:titlePg\/>/, "") : body.slice(sectStart);
 	const entete = zip.getEntry("word/header1.xml");
 	if (entete)
@@ -1058,6 +1076,7 @@ async function render(md, meta = {}) {
 		zip,
 		numeroter: meta.sansNumerotation !== true,
 		ouvreLaPage: meta.sansCouverture === true,
+		tuiles: !meta.sansDefauts,
 	});
 	ajouterLiens(zip, liensCollectes);
 	const ann = annexesXml(zip, Array.isArray(meta.annexes) ? meta.annexes : [], bm, sectPr);

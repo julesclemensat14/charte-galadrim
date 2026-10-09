@@ -16,7 +16,8 @@ class Md(html.parser.HTMLParser):
 		super().__init__()
 		self.dossier, self.out, self.buf, self.listes = dossier, [], "", []
 		self.cellules = None
-		self.titre = self.ignore = 0
+		self.titre = self.ignore = self.tables = 0
+		self.images = []  # images vues dans un tableau : posées sous lui, une ligne d'image le couperait
 		self.marques = []  # gras et italique ouverts : (balise, position dans buf)
 
 	# Un gras ou un italique vide (fréquent dans un Word) ne laisse aucune marque : « **** » ou « ** »
@@ -35,8 +36,14 @@ class Md(html.parser.HTMLParser):
 			self.buf = self.buf[: debut - len(MARQUE[tag])] + self.buf[debut:]
 
 	def flush(self):
+		# Un gras coupé par un retour à la ligne se ferme ici et se rouvre sur la ligne suivante.
+		ouverts = [tag for tag, _ in self.marques]
+		for tag in reversed(ouverts):
+			self.fermer(tag)
 		texte = re.sub(r"\s+", " ", self.buf).strip()
 		self.buf, self.marques = "", []
+		for tag in ouverts:
+			self.ouvrir(tag)
 		if not texte:
 			return
 		if self.cellules is not None:
@@ -70,18 +77,27 @@ class Md(html.parser.HTMLParser):
 			self.flush()
 			self.listes[-1][1] += 1
 		elif tag == "table":
-			self.flush()
-			self.out.append("")
-		elif tag == "tr":
+			# Un tableau dans une case se lit comme du texte de cette case.
+			self.tables += 1
+			if self.tables == 1:
+				self.flush()
+				self.out.append("")
+			else:
+				self.buf += " "
+		elif tag == "tr" and self.tables == 1:
 			self.cellules = []
-		elif tag in ("td", "th") and self.cellules is not None:
+		elif tag in ("td", "th") and self.tables == 1 and self.cellules is not None:
 			self.flush()
 			self.cellules.append("")
 		elif tag in MARQUE:
 			self.ouvrir(tag)
 		elif tag == "img" and a.get("src"):
-			self.flush()
-			self.out.append(f"\n![]({os.path.join(self.dossier, a['src'])})\n")
+			ligne = f"![]({os.path.join(self.dossier, a['src'])})"
+			if self.tables:
+				self.images.append(ligne)
+			else:
+				self.flush()
+				self.out.append(f"\n{ligne}\n")
 
 	def handle_endtag(self, tag):
 		if tag in ("style", "script", "title"):
@@ -96,8 +112,11 @@ class Md(html.parser.HTMLParser):
 			self.flush()
 			self.listes.pop()
 		elif tag in ("td", "th"):
-			self.flush()
-		elif tag == "tr" and self.cellules is not None:
+			if self.tables == 1:
+				self.flush()
+			else:
+				self.buf += " "
+		elif tag == "tr" and self.tables == 1 and self.cellules is not None:
 			if any(self.cellules):
 				premiere = not self.out or not self.out[-1].startswith("|")
 				if premiere:  # l'en-tête du gabarit est déjà en gras et ne lit pas les « ** »
@@ -106,8 +125,11 @@ class Md(html.parser.HTMLParser):
 				if premiere:
 					self.out.append("|" + "---|" * len(self.cellules))
 			self.cellules = None
-		elif tag == "table":
-			self.out.append("")
+		elif tag == "table" and self.tables:
+			self.tables -= 1
+			if not self.tables:
+				self.out += ["", *(f"{ligne}\n" for ligne in self.images)]
+				self.images = []
 		elif tag in MARQUE:
 			self.fermer(tag)
 

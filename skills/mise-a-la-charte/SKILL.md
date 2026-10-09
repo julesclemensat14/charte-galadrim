@@ -151,5 +151,11 @@ rendre de nouveau.
 ## 6. Livrer
 
 Déposer le `.docx` et le `.pdf` à côté du fichier d'origine, sous le même nom suivi de « - charte
-Galadrim ». Dire à la personne, en une ligne chacun : le nombre de pages, ce qui a été retiré (ancienne
-couverture, sommaire…), les passages devenus visuels, et tout point qui demande son œil.
+Galadrim ». Ne jamais les laisser dans le scratchpad, qui disparaît.
+
+Le message de fin s'ouvre **toujours** sur l'emplacement des deux documents : le chemin complet de
+chacun, sur sa propre ligne, et le dossier qui les contient (« sur le Bureau », « dans Téléchargements »…).
+Vérifier d'abord qu'ils y sont (`ls -l` des deux chemins) : on n'annonce pas un fichier qu'on n'a pas vu.
+
+Puis, en une ligne chacun : le nombre de pages, ce qui a été retiré (ancienne couverture, sommaire…), les
+passages devenus visuels, et tout point qui demande son œil.

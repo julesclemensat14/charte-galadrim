@@ -27,6 +27,7 @@ const {
 	HeadingLevel,
 	PageOrientation,
 } = require("docx");
+const { sansMarqueur } = require("./blocs");
 
 
 const H1 = "2F5496";
@@ -537,10 +538,13 @@ function render(md, title, annexes, opts = {}) {
 		else if (b.t === "h2") children.push(sectionHeading(b.text));
 		else if (b.t === "h3") children.push(subHeading(b.text));
 		else if (b.t === "h4") children.push(subSubHeading(b.text));
-		else if (b.t === "p") children.push(body(b.text));
-		else if (b.t === "li") pendingList.push(b.text);
+		else if (b.t === "p") {
+			const t = sansMarqueur(b.text);
+			if (t) children.push(body(t));
+		} else if (b.t === "li") pendingList.push(sansMarqueur(b.text));
 		else if (b.t === "table") children.push(makeTable(b.rows), new Paragraph({ spacing: { after: 60 }, children: [] }));
-		else if (b.t === "quote") children.push(callout(b.lines), new Paragraph({ spacing: { after: 60 }, children: [] }));
+		else if (b.t === "quote")
+			children.push(callout(b.lines.map(sansMarqueur)), new Paragraph({ spacing: { after: 60 }, children: [] }));
 		else if (b.t === "hr")
 			children.push(
 				new Paragraph({

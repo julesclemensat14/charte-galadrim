@@ -18,11 +18,19 @@ const fmt = (n) => String(n).replace(".", ",");
 
 const OPTION = /\bPSE\b|suppl[ée]mentaires?\s+[ée]ventuelles?|\boptions?\b/i;
 
+const DQE = /\bDQE\b|d[ée]tail\s+quantitatif/i;
+const estDqeSeul = (nom) => DQE.test(nom) && !/\bBPU\b|\bDPGF\b|bordereau/i.test(nom);
+function sectionsDeCharge(arrete) {
+	const sections = Array.isArray(arrete && arrete.sections) ? arrete.sections : [];
+	const bordereau = sections.filter((s) => !estDqeSeul(s.nom || ""));
+	return bordereau.length ? bordereau : sections;
+}
+
 function lignes(arretes) {
 	const out = [];
 	const vues = new Set();
 	for (const arrete of [].concat(arretes || []).filter(Boolean))
-		for (const s of Array.isArray(arrete.sections) ? arrete.sections : []) {
+		for (const s of sectionsDeCharge(arrete)) {
 			if (OPTION.test(s.nom || "")) continue;
 			for (const l of Array.isArray(s.lignes) ? s.lignes : []) {
 				const nature = String(l.nature || "").toLowerCase();
@@ -170,4 +178,4 @@ function lire(rows) {
 	};
 }
 
-module.exports = { EN_TETE, lignes, consigne, chiffrer, lire, instant };
+module.exports = { EN_TETE, lignes, consigne, chiffrer, lire, instant, sectionsDeCharge };

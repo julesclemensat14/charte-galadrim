@@ -24,6 +24,16 @@ function etapes(blocks, i) {
 	return items;
 }
 
+const PAR_RANGEE = 4;
+const ETAPE_LONGUE = 260;
+function rangees(items) {
+	const max = items.some((e) => e.texte.length > ETAPE_LONGUE) ? 3 : PAR_RANGEE;
+	const par = Math.ceil(items.length / Math.ceil(items.length / max));
+	const out = [];
+	for (let k = 0; k < items.length; k += par) out.push(items.slice(k, k + par));
+	return out;
+}
+
 
 const sansGras = (t) =>
 	String(t || "")
@@ -41,6 +51,14 @@ const UNITES = [
 	[new RegExp(`^semaines?${FIN_UNITE}`, "iu"), "sem."],
 	[new RegExp(`^mois${FIN_UNITE}`, "iu"), "mois"],
 	[new RegExp(`^ans?${FIN_UNITE}`, "iu"), null],
+	[new RegExp(`^(?:millions?|milliards?)${FIN_UNITE}`, "iu"), null],
+	[
+		new RegExp(
+			`^(?:janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[ée]cembre)${FIN_UNITE}`,
+			"iu",
+		),
+		null,
+	],
 	[new RegExp(`^ms${FIN_UNITE}`, "u"), "ms"],
 	[new RegExp(`^(?:secondes?|s)${FIN_UNITE}`, "u"), "s"],
 	[/^%/, "%"],
@@ -50,7 +68,7 @@ const UNITES = [
 
 function chiffre(cellule) {
 	const c = sansGras(cellule);
-	const m = /^([<>≤≥]\s*)?(\d+(?:[\s  ]\d{3})*(?:[,.]\d+)?(?:\s*(?:à|-|–)\s*\d+(?:[,.]\d+)?)?)\s*/.exec(c);
+	const m = /^([<>≤≥]\s*)?(\d+(?:[\s  ]\d{3})*(?:[,.]\d+)?(?:\s*(?:à|-|–)\s*\d+(?:[,.]\d+)?)?(?:er\b)?)\s*/.exec(c);
 	if (!m) return null;
 	let reste = c.slice(m[0].length);
 	let unite = "";
@@ -75,16 +93,29 @@ const deuxColonnes = (rows, min, max) =>
 	rows.length <= max + 1 &&
 	rows.every((r) => r.length === 2 && r.every((c) => String(c).trim()));
 
+function colonneChiffre(entetes) {
+	const cols = [0, 1].filter((j) => COLONNE_CHIFFRE.test(entetes[j] || ""));
+	return cols.length === 1 ? cols[0] : -1;
+}
+
+const UNITE_ENTETE = /\(([^()]+)\)\s*$/;
+
+function avecUnite(c, unite) {
+	if (!unite || !/\d$/.test(c.valeur)) return c.valeur;
+	const u = chiffre(`${c.valeur} ${unite}`);
+	return u && !u.precision ? u.valeur : c.valeur;
+}
+
 function tuiles(rows) {
 	if (!deuxColonnes(rows, 2, TUILES_MAX)) return null;
-	const cols = [0, 1].filter((j) => COLONNE_CHIFFRE.test(rows[0][j]));
-	if (cols.length !== 1) return null;
-	const j = cols[0];
+	const j = colonneChiffre(rows[0]);
+	if (j < 0) return null;
+	const unite = (UNITE_ENTETE.exec(sansGras(rows[0][j])) || [])[1];
 	const out = [];
 	for (const r of rows.slice(1)) {
 		const c = chiffre(r[j]);
 		if (!c) return null;
-		out.push({ valeur: c.valeur, libelle: sansGras(r[1 - j]), precision: c.precision });
+		out.push({ valeur: avecUnite(c, unite), libelle: sansGras(r[1 - j]), precision: c.precision });
 	}
 	return out;
 }
@@ -122,7 +153,7 @@ function jalons(rows) {
 	const couvert = Array.from({ length: n }, (_, k) =>
 		f.taches.some((t) => !/continu/i.test(t.groupe) && k >= t.de && k <= t.a),
 	);
-	return { colonnes: f.colonnes, points, couvert };
+	return { colonnes: f.colonnes, bandeaux: f.bandeaux, points, couvert };
 }
 
 function rangerJalons(points, n, largeur) {
@@ -139,17 +170,21 @@ function rangerJalons(points, n, largeur) {
 }
 
 
-const COUP_D_OEIL = /en un coup d['’]\s*(?:œ|oe)il/i;
+const TITRE_COUP_D_OEIL = "Synthèse de notre réponse";
+const COUP_D_OEIL = new RegExp(`en un coup d['’]\\s*(?:œ|oe)il|^(?:#+\\s*)?${TITRE_COUP_D_OEIL}\\s*$`, "i");
 const DELAIS = /d[ée]lais?\s+(?:d['’]\s*ex[ée]cution|de\s+r[ée]alisation)/i;
 
 module.exports = {
 	etapes,
+	rangees,
 	chiffre,
+	colonneChiffre,
 	tuiles,
 	cartes,
 	avantApres,
 	jalons,
 	rangerJalons,
 	COUP_D_OEIL,
+	TITRE_COUP_D_OEIL,
 	DELAIS,
 };

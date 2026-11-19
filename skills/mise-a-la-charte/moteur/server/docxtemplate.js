@@ -6,6 +6,8 @@ const { corpsWord } = require("./docxedit");
 const { parseBlocks, stripFences, dimensionnerTableau, numeroDeTitre } = require("./docxgen");
 const couverture = require("./couverture");
 const visuels = require("./visuels");
+const blocs = require("./blocs");
+const univers = require("./univers");
 
 
 const GABARIT = path.join(__dirname, "../templates/reference.docx");
@@ -19,6 +21,10 @@ const HEADER_FILL = ENCRE;
 const FILET = "CFC9C1";
 const ZEBRE = "F3EFEA";
 const MONO = '<w:rFonts w:ascii="Fira Mono" w:hAnsi="Fira Mono" w:cs="Fira Mono"/>';
+const MEDIUM = '<w:rFonts w:ascii="Jost Medium" w:hAnsi="Jost Medium" w:cs="Jost Medium"/>';
+const GRIS_KIT = "E3E3E3";
+
+let palette = univers.UNIVERS[univers.DEFAUT];
 
 const CORPS_SZ = 20;
 const CORPS_RPR = `<w:sz w:val="${CORPS_SZ}"/><w:szCs w:val="${CORPS_SZ}"/>`;
@@ -33,6 +39,7 @@ const xmlEsc = (s) =>
 
 
 const LIEN_RPR = `<w:color w:val="${ENCRE}"/><w:u w:val="single"/>`;
+const lienRpr = (baseRpr) => (baseRpr.includes("<w:color ") ? '<w:u w:val="single"/>' : LIEN_RPR);
 let liensCollectes = [];
 function refLien(url) {
 	const rId = `rIdLien${liensCollectes.length + 1}`;
@@ -66,7 +73,7 @@ function runsXml(text, baseRpr = "") {
 	while ((m = re.exec(text))) {
 		out += run(text.slice(last, m.index), "");
 		if (m[2] !== undefined)
-			out += `<w:hyperlink r:id="${refLien(m[2])}">${runsXml(m[1], baseRpr + LIEN_RPR)}</w:hyperlink>`;
+			out += `<w:hyperlink r:id="${refLien(m[2])}">${runsXml(m[1], baseRpr + lienRpr(baseRpr))}</w:hyperlink>`;
 		else if (m[3]) out += run(m[3], '<w:b/><w:highlight w:val="yellow"/>');
 		else if (m[4] !== undefined) out += runsXml(m[4], baseRpr + "<w:b/>");
 		else if (m[5] !== undefined) out += run(m[5], '<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/>');
@@ -76,11 +83,13 @@ function runsXml(text, baseRpr = "") {
 			out += run(m[8], "");
 			const cible = renvoisCibles.get(m[9]);
 			out += cible
-				? `<w:hyperlink w:anchor="${cible.name}">${run(cible.numero, LIEN_RPR)}</w:hyperlink>`
+				? `<w:hyperlink w:anchor="${cible.name}">${run(cible.numero, lienRpr(baseRpr))}</w:hyperlink>`
 				: run(m[9], "");
 		} else if (m[10] !== undefined) {
 			const cible = renvoisCibles.get(`annexe:${m[11]}`);
-			out += cible ? `<w:hyperlink w:anchor="${cible.name}">${run(m[10], LIEN_RPR)}</w:hyperlink>` : run(m[10], "");
+			out += cible
+				? `<w:hyperlink w:anchor="${cible.name}">${run(m[10], lienRpr(baseRpr))}</w:hyperlink>`
+				: run(m[10], "");
 		}
 		last = re.lastIndex;
 	}
@@ -154,8 +163,8 @@ const encadreXml = (lines) =>
 	paraXml(
 		"Normal",
 		runsXml(lines.join(" "), '<w:sz w:val="24"/><w:szCs w:val="24"/>'),
-		`<w:pBdr><w:left w:val="single" w:sz="24" w:space="12" w:color="${VERT}"/></w:pBdr>` +
-			'<w:shd w:val="clear" w:color="auto" w:fill="FFFFFF"/>' +
+		`<w:pBdr><w:left w:val="single" w:sz="24" w:space="12" w:color="${palette.fond}"/></w:pBdr>` +
+			`<w:shd w:val="clear" w:color="auto" w:fill="${palette.pastel}"/>` +
 			'<w:spacing w:before="240" w:after="280" w:line="300" w:lineRule="auto"/><w:ind w:left="260" w:right="200"/>',
 	);
 
@@ -178,28 +187,32 @@ function chiffresCles(id) {
 }
 
 const PAPIER = "F8F5F1";
-function tuilesXml(tuiles) {
+function tuilesXml(tuiles, clair = false) {
 	if (!tuiles.length) return "";
 	const w = Math.floor(CONTENT_DXA / tuiles.length);
 	const ecart = `w:val="single" w:sz="36" w:space="0" w:color="${PAPIER}"`;
 	const cases = tuiles
-		.map(
-			(t, j) =>
+		.map((t, j) => {
+			const pastel = clair || j === tuiles.length - 1;
+			const encre = pastel ? ENCRE : "FFFFFF";
+			const libelle = pastel ? ENCRE : "E6E3DE";
+			return (
 				`<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/><w:tcBorders><w:top ${ecart}/><w:left ${ecart}/><w:bottom ${ecart}/><w:right ${ecart}/></w:tcBorders>` +
-				`<w:shd w:val="clear" w:color="auto" w:fill="${j === tuiles.length - 1 ? VERT : ENCRE}"/></w:tcPr>` +
+				`<w:shd w:val="clear" w:color="auto" w:fill="${pastel ? palette.pastel : palette.fond}"/></w:tcPr>` +
 				paraXml(
 					"Normal",
-					`<w:r><w:rPr><w:color w:val="FFFFFF"/><w:sz w:val="44"/><w:szCs w:val="44"/></w:rPr><w:t xml:space="preserve">${xmlEsc(t.valeur)}</w:t></w:r>`,
+					`<w:r><w:rPr>${clair ? MEDIUM : ""}<w:color w:val="${encre}"/><w:sz w:val="44"/><w:szCs w:val="44"/></w:rPr><w:t xml:space="preserve">${xmlEsc(t.valeur)}</w:t></w:r>`,
 					'<w:spacing w:before="40" w:after="340" w:line="240" w:lineRule="auto"/>',
 				) +
 				paraXml(
 					"Normal",
-					`<w:r><w:rPr>${MONO}<w:caps/><w:color w:val="E6E3DE"/><w:sz w:val="13"/><w:szCs w:val="13"/></w:rPr><w:t xml:space="preserve">${xmlEsc(t.libelle)}</w:t></w:r>`,
+					`<w:r><w:rPr>${MONO}<w:caps/><w:color w:val="${libelle}"/><w:sz w:val="13"/><w:szCs w:val="13"/></w:rPr><w:t xml:space="preserve">${xmlEsc(t.libelle)}</w:t></w:r>`,
 					'<w:spacing w:before="0" w:after="40" w:line="240" w:lineRule="auto"/>',
 				) +
-				(t.precision ? ligneXml(t.precision, rprTaille(15, "E6E3DE")) : "") +
-				"</w:tc>",
-		)
+				(t.precision ? ligneXml(t.precision, rprTaille(15, libelle)) : "") +
+				"</w:tc>"
+			);
+		})
 		.join("");
 	return (
 		`<w:tbl><w:tblPr><w:tblW w:w="${w * tuiles.length}" w:type="dxa"/><w:tblLayout w:type="fixed"/>` +
@@ -215,8 +228,7 @@ const tuilesGaladrim = () => {
 	}
 };
 
-const ORANGE = "EC6A2C";
-const TEINTES = [ENCRE, VERT, "D9D3CA"];
+const TEINTES = [ENCRE, VERT, GRIS_KIT];
 const teinteDe = (groupe, ordre) =>
 	/continu/i.test(groupe)
 		? TEINTES[2]
@@ -233,16 +245,16 @@ function friseXml(rows) {
 	const w = Math.floor((CONTENT_DXA - LIB) / n);
 	const groupes = [...new Set(f.taches.map((t) => t.groupe))];
 	const txt = (t, rpr, jc = "") =>
-		`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>${jc}</w:pPr><w:r><w:rPr>${rpr}</w:rPr><w:t xml:space="preserve">${xmlEsc(t)}</w:t></w:r></w:p>`;
+		`<w:p><w:pPr><w:keepNext/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>${jc}</w:pPr><w:r><w:rPr>${rpr}</w:rPr><w:t xml:space="preserve">${xmlEsc(t)}</w:t></w:r></w:p>`;
 	const mono = (sz, couleur) =>
 		`${MONO}<w:caps/><w:color w:val="${couleur}"/><w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/>`;
 	const tc = (largeur, contenu, { span = 1, bordures = "", marges = "" } = {}) =>
 		`<w:tc><w:tcPr><w:tcW w:w="${largeur}" w:type="dxa"/>${span > 1 ? `<w:gridSpan w:val="${span}"/>` : ""}` +
-		`${bordures ? `<w:tcBorders>${bordures}</w:tcBorders>` : ""}${marges}<w:vAlign w:val="center"/></w:tcPr>${contenu || "<w:p/>"}</w:tc>`;
+		`${bordures ? `<w:tcBorders>${bordures}</w:tcBorders>` : ""}${marges}<w:vAlign w:val="center"/></w:tcPr>${contenu || "<w:p><w:pPr><w:keepNext/></w:pPr></w:p>"}</w:tc>`;
 	const tiret = `w:val="dashed" w:sz="4" w:space="0" w:color="${FILET}"`;
 	const trait = `w:val="single" w:sz="6" w:space="0" w:color="${ENCRE}"`;
 	const barreXml = (teinte) =>
-		`<w:p><w:pPr><w:shd w:val="clear" w:color="auto" w:fill="${teinte}"/><w:spacing w:before="0" w:after="0" w:line="190" w:lineRule="exact"/></w:pPr>` +
+		`<w:p><w:pPr><w:keepNext/><w:shd w:val="clear" w:color="auto" w:fill="${teinte}"/><w:spacing w:before="0" w:after="0" w:line="190" w:lineRule="exact"/></w:pPr>` +
 		`<w:r><w:rPr><w:sz w:val="4"/><w:szCs w:val="4"/></w:rPr><w:t xml:space="preserve"> </w:t></w:r></w:p>`;
 	const debutDeBandeau = new Set(f.bandeaux.length ? f.bandeaux.map((b) => b.de) : f.colonnes.map((_, k) => k));
 	let lignes = "";
@@ -269,7 +281,7 @@ function friseXml(rows) {
 		let cases = "";
 		for (let k = 0; k < n; k++) {
 			if (jalonApres && k === t.a + 1) {
-				cases += tc(w * (n - k), txt(`◆ ${t.jalon}`, mono(12, ORANGE)), {
+				cases += tc(w * (n - k), txt(`◆ ${t.jalon}`, mono(12, palette.fond)), {
 					span: n - k,
 					bordures: `<w:bottom ${tiret}/>`,
 				});
@@ -297,7 +309,7 @@ function friseXml(rows) {
 		)
 		.join("");
 	const jalons = f.taches.some((t) => t.jalon)
-		? `<w:r><w:rPr>${MONO}<w:color w:val="${ORANGE}"/><w:sz w:val="16"/></w:rPr><w:t xml:space="preserve">◆ </w:t></w:r><w:r><w:rPr>${mono(13, "6F6E6C")}</w:rPr><w:t>Jalon</w:t></w:r>`
+		? `<w:r><w:rPr>${MONO}<w:color w:val="${palette.fond}"/><w:sz w:val="16"/></w:rPr><w:t xml:space="preserve">◆ </w:t></w:r><w:r><w:rPr>${mono(13, "6F6E6C")}</w:rPr><w:t>Jalon</w:t></w:r>`
 		: "";
 	return (
 		`<w:tbl><w:tblPr><w:tblW w:w="${LIB + w * n}" w:type="dxa"/><w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders>` +
@@ -326,35 +338,44 @@ const numero2 = (k) => String(k + 1).padStart(2, "0");
 const GRIS_TEXTE = "4A4744";
 
 function etapesXml(items) {
-	const k = items.length;
+	const rangees = visuels.rangees(items);
+	const k = rangees[0].length;
 	const FLECHE = 300;
 	const bloc = Math.floor((CONTENT_DXA - (k - 1) * FLECHE) / k);
-	const largeurs = items.flatMap((_, j) => (j ? [FLECHE, bloc] : [bloc]));
-	const fondDe = (j) => (j === k - 1 ? VERT : j % 2 ? "3B3937" : ENCRE);
-	const tete = items
-		.map((e, j) => {
+	const largeurs = rangees[0].flatMap((_, j) => (j ? [FLECHE, bloc] : [bloc]));
+	const vide = (w) => caseXml(w, "<w:p><w:pPr></w:pPr></w:p>");
+	const filet = `<w:top w:val="dashed" w:sz="6" w:space="0" w:color="${FILET}"/>`;
+	const fleche = caseXml(FLECHE, ligneXml("→", `${MONO}${rprTaille(26, VERT)}`, '<w:jc w:val="center"/>'), {
+		vAlign: "center",
+	});
+	const rangeeXml = (rangee, debut) => {
+		const manque = Array.from({ length: k - rangee.length }, () => vide(FLECHE) + vide(bloc)).join("");
+		const tete = rangee.map((e, j) => {
+			const dernier = debut + j === items.length - 1;
 			const blocXml = caseXml(
 				bloc,
-				ligneXml(numero2(j), rprMono(13, "D9D3CA")) + ligneXml(e.titre, `<w:b/>${rprTaille(21, "FFFFFF")}`),
-				{ fond: fondDe(j), vAlign: "center" },
+				ligneXml(numero2(debut + j), rprMono(13, dernier ? ENCRE : GRIS_KIT)) +
+					ligneXml(e.titre, `<w:b/>${rprTaille(21, dernier ? ENCRE : "FFFFFF")}`),
+				{ fond: dernier ? palette.pastel : palette.fond, vAlign: "center" },
 			);
-			const fleche = caseXml(FLECHE, ligneXml("→", `${MONO}${rprTaille(26, VERT)}`, '<w:jc w:val="center"/>'), {
-				vAlign: "center",
-			});
-			return j ? fleche + blocXml : blocXml;
-		})
-		.join("");
-	const filet = `<w:top w:val="dashed" w:sz="6" w:space="0" w:color="${FILET}"/>`;
-	const details = items
-		.map((e, j) => {
-			const texte = caseXml(bloc, ligneXml(e.texte, rprTaille(16, GRIS_TEXTE)), { bordures: filet });
-			return j ? caseXml(FLECHE, "") + texte : texte;
-		})
-		.join("");
+			return (j ? fleche : "") + blocXml;
+		});
+		const details = rangee.map(
+			(e, j) =>
+				(j ? vide(FLECHE) : "") + caseXml(bloc, ligneXml(e.texte, rprTaille(16, GRIS_TEXTE)), { bordures: filet }),
+		);
+		return (
+			`<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="900" w:hRule="atLeast"/></w:trPr>${tete.join("")}${manque}</w:tr>` +
+			`<w:tr><w:trPr><w:cantSplit/></w:trPr>${details.join("")}${manque}</w:tr>`
+		);
+	};
+	const blanc = `<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="240" w:hRule="exact"/></w:trPr>${largeurs.map(vide).join("")}</w:tr>`;
 	return tableauNu(
 		largeurs,
-		`<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="900" w:hRule="atLeast"/></w:trPr>${tete}</w:tr>` +
-			`<w:tr><w:trPr><w:cantSplit/></w:trPr>${details}</w:tr>`,
+		rangees
+			.map((r, i) => rangeeXml(r, i * k))
+			.join(blanc)
+			.replace(/<w:pPr>(<w:pStyle w:val="[^"]*"\/>)?/g, "$&<w:keepNext/>"),
 		'<w:tblCellMar><w:top w:w="120" w:type="dxa"/><w:left w:w="140" w:type="dxa"/><w:bottom w:w="120" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar>',
 	);
 }
@@ -373,7 +394,7 @@ function cartesXml(cartes) {
 						ligneXml(c.texte, rprTaille(17, GRIS_TEXTE)),
 					{
 						fond: "FFFFFF",
-						bordures: `<w:top w:val="single" w:sz="36" w:space="0" w:color="${VERT}"/>`,
+						bordures: `<w:top w:val="single" w:sz="36" w:space="0" w:color="${palette.fond}"/>`,
 					},
 				),
 		)
@@ -389,8 +410,8 @@ function avantApresXml({ entetes, lignes }) {
 	const w = Math.floor(CONTENT_DXA / 2);
 	const filet = `<w:bottom w:val="dashed" w:sz="6" w:space="0" w:color="${FILET}"/>`;
 	const tete =
-		caseXml(w, ligneXml(entetes[0], rprMono(15, "FFFFFF")), { fond: "8A847D" }) +
-		caseXml(w, ligneXml(entetes[1], rprMono(15, "FFFFFF")), { fond: VERT });
+		caseXml(w, ligneXml(entetes[0], rprMono(15, "FFFFFF")), { fond: "9A9A9A" }) +
+		caseXml(w, ligneXml(entetes[1], rprMono(15, "FFFFFF")), { fond: palette.fond });
 	const corps = lignes
 		.map(
 			([avant, apres]) =>
@@ -410,11 +431,14 @@ function jalonsXml(j) {
 	const w = Math.floor(CONTENT_DXA / n);
 	const pas = Math.ceil(n / 12);
 	const reperes = j.colonnes.map((c, k) => caseXml(w, k % pas ? "" : ligneXml(c, rprMono(12, "6F6E6C")))).join("");
+	const annees = j.bandeaux.length
+		? `<w:tr>${j.bandeaux.map((b) => caseXml(w * (b.a - b.de + 1), ligneXml(b.nom, rprMono(12, ENCRE)), { span: b.a - b.de + 1 })).join("")}</w:tr>`
+		: "";
 	const auJalon = new Set(j.points.map((p) => p.k));
 	const barre = j.colonnes
 		.map((_, k) =>
 			caseXml(w, '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="120" w:lineRule="exact"/></w:pPr></w:p>', {
-				fond: auJalon.has(k) ? VERT : j.couvert[k] ? ENCRE : "D9D3CA",
+				fond: auJalon.has(k) ? VERT : j.couvert[k] ? ENCRE : GRIS_KIT,
 				bordures: `<w:right w:val="single" w:sz="4" w:space="0" w:color="${PAPIER}"/>`,
 			}),
 		)
@@ -442,7 +466,7 @@ function jalonsXml(j) {
 		.join("");
 	return tableauNu(
 		j.colonnes.map(() => w),
-		`<w:tr>${reperes}</w:tr><w:tr><w:trPr><w:trHeight w:val="220" w:hRule="exact"/></w:trPr>${barre}</w:tr>${etiquettes}`,
+		`${annees}<w:tr>${reperes}</w:tr><w:tr><w:trPr><w:trHeight w:val="220" w:hRule="exact"/></w:trPr>${barre}</w:tr>${etiquettes}`,
 		'<w:tblCellMar><w:top w:w="40" w:type="dxa"/><w:left w:w="90" w:type="dxa"/><w:bottom w:w="40" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tblCellMar>',
 	);
 }
@@ -475,17 +499,17 @@ function numeroteur() {
 }
 
 const NUMERO_SZ = { Heading1: 26, Heading2: 20, Heading3: 18 };
-const numeroXml = (styleId, text) => {
+const numeroXml = (styleId, text, couleur) => {
 	const m = String(text).match(/^(\d+(?:\.\d+)*\.?)\s+/);
 	if (!m || !NUMERO_SZ[styleId]) return { numero: "", reste: text };
 	const sz = NUMERO_SZ[styleId];
 	return {
-		numero: `<w:r><w:rPr>${MONO}<w:color w:val="${VERT}"/><w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/></w:rPr><w:t xml:space="preserve">${m[1]}  </w:t></w:r>`,
+		numero: `<w:r><w:rPr>${MONO}<w:color w:val="${couleur}"/><w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/></w:rPr><w:t xml:space="preserve">${m[1]}  </w:t></w:r>`,
 		reste: text.slice(m[0].length),
 	};
 };
-const headingXml = (styleId, text, bm, name, pPrExtra, rpr = "") => {
-	const { numero, reste } = numeroXml(styleId, text);
+const headingXml = (styleId, text, bm, name, pPrExtra, rpr = "", couleurNumero = VERT) => {
+	const { numero, reste } = numeroXml(styleId, text, couleurNumero);
 	return (
 		`<w:p><w:pPr><w:pStyle w:val="${styleId}"/>${pPrExtra || `<w:spacing w:after="${APRES_TITRE[styleId] || 160}"/>`}</w:pPr>` +
 		`<w:bookmarkStart w:id="${bm}" w:name="${name}"/>${numero}${runsXml(reste, rpr)}<w:bookmarkEnd w:id="${bm}"/></w:p>`
@@ -560,9 +584,75 @@ function figureXml(zip, figure, n, opts = {}) {
 	);
 }
 
+const PAGE_EMU = { cx: 7562215, cy: 10689590 };
+const sectPrSuite = (sectPr) => sectPr.replace(/<w:pgNumType\b[^>]*\/>/, "").replace(/<w:titlePg\/>/, "");
+const sectPrPleine = (sectPr) => sectPrSuite(sectPr).replace("</w:sectPr>", "<w:titlePg/></w:sectPr>");
+const fondXml = (rId, n) =>
+	`<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="0" behindDoc="1" locked="1" layoutInCell="1" allowOverlap="1">` +
+	`<wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionH>` +
+	`<wp:positionV relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx="${PAGE_EMU.cx}" cy="${PAGE_EMU.cy}"/>` +
+	`<wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/><wp:docPr id="${800 + n}" name="Page pleine ${n}"/><wp:cNvGraphicFramePr/>` +
+	`<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr>` +
+	`<pic:cNvPr id="${800 + n}" name="page-pleine${n}.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}"/>` +
+	`<a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${PAGE_EMU.cx}" cy="${PAGE_EMU.cy}"/></a:xfrm>` +
+	`<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>`;
+const pagePleineXml = (rId, n, contenuXml, avant, sectPr) =>
+	sectionBreakXml(avant) +
+	contenuXml.replace("</w:pPr>", `</w:pPr>${fondXml(rId, n)}`) +
+	`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>${sectPrPleine(sectPr)}</w:pPr></w:p>`;
+const INTERCALAIRE_POINTS_MAX = 180;
+const INTERCALAIRE_MAX = 700;
+const pointXml = (p, k) =>
+	paraXml(
+		"Normal",
+		runsXml(p.repere, rprMono(18, palette.pastel)) + "<w:r><w:br/></w:r>" + runsXml(p.texte, rprTaille(22, "FFFFFF")),
+		`<w:spacing w:before="${k ? 240 : 480}" w:after="0" w:line="240" w:lineRule="auto"/><w:ind w:right="1400"/>`,
+	);
+const intercalaireXml = (titre, phrase, points) =>
+	headingXml(
+		titre.styleId,
+		titre.text,
+		titre.bm,
+		titre.name,
+		`<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="8" w:color="${palette.fond}"/></w:pBdr>` +
+			`<w:spacing w:before="${points.length ? 1200 : 2400}" w:after="360" w:line="240" w:lineRule="auto"/>`,
+		`${MEDIUM}<w:color w:val="FFFFFF"/><w:sz w:val="64"/><w:szCs w:val="64"/>`,
+		palette.pastel,
+	) +
+	paraXml(
+		"Normal",
+		runsXml(phrase, '<w:color w:val="FFFFFF"/><w:sz w:val="28"/><w:szCs w:val="28"/>'),
+		'<w:spacing w:before="0" w:after="0" w:line="300" w:lineRule="auto"/><w:ind w:right="1400"/>',
+	) +
+	points.map(pointXml).join("");
+const CITATION_COURTE = 140;
+const CITATION_MAX = 300;
+const citationXml = (phrase, preuve) =>
+	paraXml(
+		"Normal",
+		runsXml(phrase, `${MEDIUM}${rprTaille(phrase.length > CITATION_COURTE ? 40 : 52, "FFFFFF")}`),
+		`<w:pBdr><w:top w:val="single" w:sz="24" w:space="18" w:color="${palette.pastel}"/></w:pBdr>` +
+			`<w:spacing w:before="${preuve ? 2400 : 3600}" w:after="0" w:line="264" w:lineRule="auto"/><w:ind w:right="1400"/>`,
+	) +
+	(preuve
+		? paraXml(
+				"Normal",
+				runsXml(preuve.repere, `${MEDIUM}${rprTaille(56, palette.pastel)}`),
+				'<w:spacing w:before="600" w:after="60" w:line="240" w:lineRule="auto"/>',
+			) + paraXml("Normal", runsXml(preuve.texte, rprMono(18, "FFFFFF")), '<w:ind w:right="1400"/>')
+		: "");
+
 function bodyToXml(
 	blocks,
-	{ annexes = [], figuresCorps = [], zip = null, numeroter = true, ouvreLaPage = false, tuiles = true } = {},
+	{
+		annexes = [],
+		figuresCorps = [],
+		zip = null,
+		numeroter = true,
+		ouvreLaPage = false,
+		tuiles = true,
+		sectPr = "",
+	} = {},
 ) {
 	const toc = [];
 	const titres = new Map();
@@ -608,6 +698,34 @@ function bodyToXml(
 		jalonsEnAttente = null;
 		return jalonsXml(frise);
 	};
+	let pleines = 0;
+	let citations = 0;
+	let courante = sectPr;
+	const fonds = new Map();
+	let derniere = null;
+	const fondDePage = () =>
+		sectPr && zip && !(derniere && derniere.fin === out.length) ? univers.image(palette, pleines) : null;
+	const pucesApres = (j, type) => {
+		let fin = j;
+		while (blocks[fin] && blocks[fin].t === "li") fin++;
+		return blocs.points(
+			type,
+			blocks.slice(j, fin).map((b) => b.text),
+		);
+	};
+	const enPuces = (j, n) =>
+		blocks
+			.slice(j, j + n)
+			.map((b) => bulletXml(b.text))
+			.join("");
+	const poserPagePleine = (png, contenu, repli) => {
+		if (!fonds.has(png)) fonds.set(png, ajouterMedia(zip, fs.readFileSync(png), `pleine${fonds.size + 1}`));
+		if (out.endsWith(pageBreakXml)) out = out.slice(0, -pageBreakXml.length);
+		derniere = { debut: out.length, repli, courante };
+		out += pagePleineXml(fonds.get(png), ++pleines, contenu, courante, sectPr);
+		derniere.fin = out.length;
+		courante = sectPrSuite(sectPr);
+	};
 	let sauter = 0;
 	for (const [i, b] of blocks.entries()) {
 		if (sauter) {
@@ -616,7 +734,11 @@ function bodyToXml(
 		}
 		const titre = titres.get(i);
 		const figure = b.t === "p" ? parLegende.get(normal(b.text)) : null;
-		const etapes = b.t === "p" && !figure ? visuels.etapes(blocks, i) : null;
+		const d = b.t === "p" && !figure ? blocs.directive(b.text) : null;
+		const etapes = b.t === "p" && !figure && !d ? visuels.etapes(blocks, i) : null;
+		const suivant = blocks[i + 1];
+		const chiffres =
+			d && d.type === "chiffres" && suivant && suivant.t === "table" ? visuels.tuiles(suivant.rows) : null;
 		if (titre) {
 			out += poserTuiles() + poserJalons();
 			const sansSaut =
@@ -624,7 +746,24 @@ function bodyToXml(
 					? `<w:pageBreakBefore w:val="0"/><w:spacing w:after="${APRES_TITRE[titre.styleId] || 160}"/>`
 					: undefined;
 			premierTitre = false;
-			out += headingXml(titre.styleId, titre.text, titre.bm, titre.name, sansSaut);
+			if (titre.styleId === STYLE.h2 && !sansSaut && out.endsWith("<w:p/>")) out = out.slice(0, -"<w:p/>".length);
+			const ouverture =
+				titre.styleId === STYLE.h2 && suivant && suivant.t === "p" ? blocs.directive(suivant.text) : null;
+			const fond =
+				ouverture && ouverture.type === "intercalaire" && ouverture.texte && ouverture.texte.length <= INTERCALAIRE_MAX
+					? fondDePage()
+					: null;
+			if (fond) {
+				const points = ouverture.texte.length <= INTERCALAIRE_POINTS_MAX ? pucesApres(i + 2, "intercalaire") : [];
+				poserPagePleine(
+					fond,
+					intercalaireXml(titre, ouverture.texte, points),
+					headingXml(titre.styleId, titre.text, titre.bm, titre.name, sansSaut) +
+						bodyParaXml(ouverture.texte) +
+						enPuces(i + 2, points.length),
+				);
+				sauter = 1 + points.length;
+			} else out += headingXml(titre.styleId, titre.text, titre.bm, titre.name, sansSaut);
 			tuilesEnAttente = tuiles && titre.styleId === STYLE.h2 && /pr[ée]sentation de galadrim/i.test(titre.text);
 			if (frise && titre.styleId === STYLE.h2) {
 				jalonsEnAttente = visuels.COUP_D_OEIL.test(titre.text) ? "coup" : null;
@@ -634,21 +773,41 @@ function bodyToXml(
 				}
 			}
 		} else if (figure) out += figureXml(zip, figure, ++media, { carte: true }) || bodyParaXml(b.text);
-		else if (etapes) {
+		else if (d && d.type === "citation" && d.texte) {
+			const fond = citations < blocs.CITATIONS_MAX && d.texte.length <= CITATION_MAX ? fondDePage() : null;
+			if (fond) {
+				const preuve = pucesApres(i + 1, "citation");
+				poserPagePleine(fond, citationXml(d.texte, preuve[0]), encadreXml([d.texte]) + enPuces(i + 1, preuve.length));
+				citations++;
+				sauter = preuve.length;
+			} else out += encadreXml([d.texte]);
+		} else if (chiffres) {
+			out += (d.texte ? bodyParaXml(d.texte) : "") + tuilesXml(chiffres, true);
+			sauter = 1;
+		} else if (etapes) {
 			out += etapesXml(etapes);
 			sauter = etapes.length - 1;
-		} else if (b.t === "p")
-			out += bodyParaXml(b.text) + poserTuiles() + (jalonsEnAttente === "delais" ? poserJalons() : "");
-		else if (b.t === "li") out += bulletXml(b.text);
-		else if (b.t === "table")
+		} else if (b.t === "p") {
+			const t = blocs.sansMarqueur(b.text);
+			out += (t ? bodyParaXml(t) : "") + poserTuiles() + (jalonsEnAttente === "delais" ? poserJalons() : "");
+		} else if (b.t === "li") {
+			const t = blocs.sansMarqueur(b.text);
+			if (t) out += bulletXml(t);
+		} else if (b.t === "table")
 			out +=
 				(jalonsEnAttente === "coup" && visuels.avantApres(b.rows) ? poserJalons() : "") +
 				(friseXml(b.rows) || visuelDeTableau(b.rows) || tableXml(b.rows));
-		else if (b.t === "quote") out += encadreXml(b.lines);
-		else if (b.t === "hr") out += "<w:p/>";
+		else if (b.t === "quote") {
+			const lignes = b.lines.map(blocs.sansMarqueur).filter((l) => l.trim());
+			if (lignes.length) out += encadreXml(lignes);
+		} else if (b.t === "hr") out += "<w:p/>";
 	}
 	out += poserTuiles() + poserJalons();
-	return { xml: out, toc, bm };
+	if (derniere && derniere.fin === out.length) {
+		out = out.slice(0, derniere.debut) + derniere.repli;
+		courante = derniere.courante;
+	}
+	return { xml: out, toc, bm, sectPr: courante };
 }
 
 
@@ -1013,6 +1172,7 @@ function plan(md) {
 
 async function render(md, meta = {}) {
 	const blocks = parseBlocks(stripFences(md));
+	palette = meta.univers || univers.UNIVERS[univers.DEFAUT];
 
 	const {
 		k,
@@ -1053,6 +1213,9 @@ async function render(md, meta = {}) {
 	const infoTable =
 		meta.sansCouverture || !lignes.length ? "" : tableauContacts(body.slice(tblStart, tblEnd), tableHeader, lignes);
 	const sectPr = meta.sansCouverture ? body.slice(sectStart).replace(/<w:titlePg\/>/, "") : body.slice(sectStart);
+	const fondCouverture = univers.image(palette, "couverture");
+	if (fondCouverture && zip.getEntry("word/media/couverture-fond.png"))
+		zip.updateFile("word/media/couverture-fond.png", fs.readFileSync(fondCouverture));
 	const entete = zip.getEntry("word/header1.xml");
 	if (entete)
 		zip.updateFile(
@@ -1070,6 +1233,7 @@ async function render(md, meta = {}) {
 		xml: corpsXml,
 		toc,
 		bm,
+		sectPr: sectPrCorps,
 	} = bodyToXml(bodyBlocks, {
 		annexes: Array.isArray(meta.annexes) ? meta.annexes : [],
 		figuresCorps: Array.isArray(meta.figuresCorps) ? meta.figuresCorps : [],
@@ -1077,9 +1241,10 @@ async function render(md, meta = {}) {
 		numeroter: meta.sansNumerotation !== true,
 		ouvreLaPage: meta.sansCouverture === true,
 		tuiles: !meta.sansDefauts,
+		sectPr,
 	});
 	ajouterLiens(zip, liensCollectes);
-	const ann = annexesXml(zip, Array.isArray(meta.annexes) ? meta.annexes : [], bm, sectPr);
+	const ann = annexesXml(zip, Array.isArray(meta.annexes) ? meta.annexes : [], bm, sectPrCorps);
 	const sommaire = meta.sansSommaire ? "" : sommaireXml([...toc, ...ann.toc]);
 	const newBody = coverXml + infoTable + sommaire + corpsXml + ann.xml + ann.sectPr;
 	const newDoc = doc.replace(/<w:body>[\s\S]*<\/w:body>/, `<w:body>${newBody}</w:body>`);
